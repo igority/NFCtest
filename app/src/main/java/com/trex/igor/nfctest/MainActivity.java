@@ -9,10 +9,15 @@ import android.nfc.NfcAdapter;
 import android.nfc.Tag;
 import android.nfc.tech.Ndef;
 import android.nfc.tech.NdefFormatable;
+import android.os.Parcelable;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
 import android.util.Log;
+import android.view.View;
+import android.widget.EditText;
+import android.widget.TextView;
 import android.widget.Toast;
+import android.widget.ToggleButton;
 
 import java.io.ByteArrayOutputStream;
 import java.io.UnsupportedEncodingException;
@@ -21,18 +26,21 @@ import java.util.Locale;
 public class MainActivity extends AppCompatActivity {
 
     NfcAdapter nfcAdapter;
+    ToggleButton tglReadWrite;
+    EditText etTagContent;
+    TextView txtTagContent;
+
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
         nfcAdapter = NfcAdapter.getDefaultAdapter(this);
-        if (nfcAdapter != null && nfcAdapter.isEnabled()) {
-           // Toast.makeText(this, "NFC is working! :)", Toast.LENGTH_SHORT).show();
-        } else {
-            finish();
-           // Toast.makeText(this, "NFC not working :(", Toast.LENGTH_SHORT).show();
-        }
+        tglReadWrite = (ToggleButton) findViewById(R.id.tglReadWrite);
+        txtTagContent = (TextView) findViewById(R.id.txtTagContent);
+        etTagContent = (EditText) findViewById(R.id.etTagContent);
+
     }
 
 
@@ -42,12 +50,34 @@ public class MainActivity extends AppCompatActivity {
         super.onNewIntent(intent);
         if (intent.hasExtra(NfcAdapter.EXTRA_TAG)) {
             //Toast.makeText(this,"NfcIntent!", Toast.LENGTH_SHORT).show();
-            Tag tag = intent.getParcelableExtra(NfcAdapter.EXTRA_TAG);
-            NdefMessage ndefMessage = createNdefMessage("My string content!");
 
-            writeNdefMessage(tag, ndefMessage);
+            if (tglReadWrite.isChecked()) {
+                Parcelable[] parcelables = intent.getParcelableArrayExtra(NfcAdapter.EXTRA_NDEF_MESSAGES);
+                if (parcelables != null && parcelables.length > 0) {
+                    readTextFromTag((NdefMessage)parcelables[0]);
+                } else {
+                    Toast.makeText(this, "No NDEF messages found!", Toast.LENGTH_SHORT).show();
+                }
+            } else {
+                Tag tag = intent.getParcelableExtra(NfcAdapter.EXTRA_TAG);
+                NdefMessage ndefMessage = createNdefMessage(etTagContent.getText()+ "");
+
+                writeNdefMessage(tag, ndefMessage);
+            }
+
         }
 
+    }
+
+    private void readTextFromTag(NdefMessage ndefMessage) {
+        NdefRecord[] ndefRecords = ndefMessage.getRecords();
+        if (ndefRecords != null && ndefRecords.length > 0) {
+            NdefRecord ndefRecord = ndefRecords[0];
+            String tagContent = getTextFromNdefRecord(ndefRecord);
+            txtTagContent.setText(tagContent);
+        } else {
+            Toast.makeText(this, "No NDEF records found!", Toast.LENGTH_SHORT).show();
+        }
     }
 
     @Override
@@ -160,6 +190,24 @@ public class MainActivity extends AppCompatActivity {
         NdefRecord ndefRecord = createTextRecord(content);
         NdefMessage ndefMessage = new NdefMessage(new NdefRecord[]{ ndefRecord });
         return ndefMessage;
+    }
+
+    public void tglReadWriteOnClick(View view) {
+        txtTagContent.setText("");
+
+    }
+
+    public String getTextFromNdefRecord (NdefRecord ndefRecord) {
+        String tagContent = null;
+        try {
+            byte[] payload = ndefRecord.getPayload();
+            String textEncoding = ((payload[0] & 128) == 0) ? "UTF-8" : "UTF-16";
+            int languageSize = payload[0] & 0063;
+            tagContent = new String(payload, languageSize + 1,payload.length - languageSize - 1, textEncoding);
+        } catch (UnsupportedEncodingException e) {
+            Log.e("getTextFromNdefRecord", e.getMessage(), e);
+        }
+        return tagContent;
     }
 }
 
